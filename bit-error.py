@@ -9,59 +9,50 @@ TCP_IP = '127.0.0.1'
 TCP_PORT = 14423
 BUFFER_SIZE = 1024 * 256 
 
-def get_snapshot(s):
-    """Captures a raw moment of the airwaves."""
-    data = s.recv(BUFFER_SIZE)
-    # Convert raw bytes to IQ signal power
-    samples = np.frombuffer(data, dtype=np.uint8).astype(np.float32) - 127.5
-    return np.var(samples**2)
-
 def run_raw_radar():
-    multiplier = 1.2  # Start very sensitive
-    history = []
+    multiplier = 1.3  # Start low for testing
+    baseline_history = []
     
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(5)
         s.connect((TCP_IP, TCP_PORT))
-        
-        print("Connecting to RTL-SDR Driver...")
-        time.sleep(1)
-        baseline = get_snapshot(s)
-        
-        print(f"--- Radar Online (Dededo Node) ---")
-        print(f"Baseline: {baseline:.2e} | Sens: {multiplier}x")
-        print("Keys: [r] Recalibrate | [+] / [-] Sensitivity")
+        print("Connected to RTL-SDR Bridge...")
 
         while True:
-            # 1. Live Input Logic
+            # 1. Capture the Raw Trace
+            data = s.recv(BUFFER_SIZE)
+            if not data: break
+            
+            samples = np.frombuffer(data, dtype=np.uint8).astype(np.float32) - 127.5
+            current_var = np.var(samples**2)
+            
+            # 2. Rolling Baseline (The "Memory" of the room)
+            baseline_history.append(current_var)
+            if len(baseline_history) > 50: baseline_history.pop(0)
+            current_baseline = np.median(baseline_history)
+            
+            # 3. Calculate "Shadow Intensity"
+            intensity = current_var / current_baseline if current_baseline > 0 else 1.0
+            
+            # 4. Feedback Logic
+            # This line lets you see the 'jitter' in real-time
+            sys.stdout.write(f"\rIntensity: {intensity:.2f}x | Multiplier: {multiplier:.1f}  ")
+            sys.stdout.flush()
+
+            if intensity > multiplier:
+                print(f"\n[!] MOVEMENT DETECTED: {time.strftime('%H:%M:%S')}")
+            
+            # 5. Live Controls
             if select.select([sys.stdin], [], [], 0)[0]:
                 cmd = sys.stdin.read(1)
-                if cmd == 'r':
-                    baseline = get_snapshot(s)
-                    print(f"[*] Recalibrated Baseline: {baseline:.2e}")
-                elif cmd == '+': multiplier += 0.2
-                elif cmd == '-': multiplier = max(1.05, multiplier - 0.2)
-                print(f"[*] Multiplier set to {multiplier:.2f}x")
+                if cmd == '+': multiplier += 0.1
+                elif cmd == '-': multiplier = max(1.1, multiplier - 0.1)
 
-            # 2. Capture and Analyze the 'Trace'
-            current_var = get_snapshot(s)
-            
-            # Smoothing the signal (Moving Average of 4)
-            history.append(current_var)
-            if len(history) > 4: history.pop(0)
-            smoothed_var = np.mean(history)
-            
-            # 3. Detection Trigger
-            # If the current jitter is higher than the baseline * multiplier
-            if smoothed_var > (baseline * multiplier):
-                diff = (smoothed_var / baseline)
-                print(f"[!] PHYSICAL TRACE: {time.strftime('%H:%M:%S')} | Intensity: {diff:.2f}x")
-            
             time.sleep(0.05)
 
     except Exception as e:
-        print(f"Connection Lost: {e}")
+        print(f"\nRadar Glitch: {e}")
     finally:
         s.close()
 
