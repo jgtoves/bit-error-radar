@@ -3,7 +3,7 @@ import socket
 import numpy as np
 import time
 
-# Use the coordinates from your APK
+# Coordination for the RTL-SDR Driver APK
 TCP_IP = '127.0.0.1' 
 TCP_PORT = 14423
 BUFFER_SIZE = 1024 * 256 
@@ -16,26 +16,29 @@ def run_raw_radar():
         s.connect((TCP_IP, TCP_PORT))
         print("Connected. Calibrating the room's noise floor...")
 
-        # Initial calibration to sense the 'empty' room
+        # 1. Calibration: Capturing the 'empty' state of the room
         time.sleep(1)
         data = s.recv(BUFFER_SIZE)
         samples = np.frombuffer(data, dtype=np.uint8).astype(np.float32) - 127.5
         baseline = np.var(samples**2)
+        # 2. Sensitivity: Adjust the multiplier (2.5) if it's too twitchy
         threshold = baseline * 2.5 
         print(f"Calibration Complete. Noise Floor: {baseline:.2e}")
 
         while True:
             data = s.recv(BUFFER_SIZE)
-            if not data: break
+            if not data:
+                break
             
-            # Convert the raw bytes into a signal 'power' value
+            # 3. Process the 'Binary Shadow'
             samples = np.frombuffer(data, dtype=np.uint8).astype(np.float32) - 127.5
             current_var = np.var(samples**2)
             
-            # If the room 'jitters' more than the baseline, a person is detected
+            # 4. Detection Event
             if current_var > threshold:
                 print(f"[!] Binary Shadow Detected: {time.strftime('%H:%M:%S')}")
             
+            # Keep this line exactly aligned with the 'if' block above
             time.sleep(0.05)
 
     except Exception as e:
