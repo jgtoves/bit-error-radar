@@ -2,44 +2,41 @@ import os
 import numpy as np
 import time
 
-# Keep this to bypass the missing C libraries
+# Essential for Termux environment
 os.environ['RTLSDR_CLIENT_MODE'] = 'true'
 from rtlsdr import RtlSdrTcpClient
 
 def run_radar():
     try:
-        # 1. Connect to the APK Driver
-        print("Connecting to RTL-SDR Driver APK...")
-        client = RtlSdrTcpClient(hostname='0.0.0.0', port=14423)
+        # Match this exactly to what your APK shows
+        # Use 127.0.0.1 if the APK is on the SAME phone
+        print("Connecting to RTL-SDR Driver on 127.0.0.1:14423...")
+        client = RtlSdrTcpClient(hostname='127.0.0.1', port=14423)
         
-        # Give the socket a second to breathe
-        time.sleep(1)
+        # Give the connection a moment to stabilize
+        time.sleep(2)
 
-        # 2. Configure for Guam 5G (Docomo/IT&E 700MHz range)
-        print("Tuning to 710MHz...")
+        # Tune to the 5G frequency 'trace'
         client.center_freq = 710e6  
         client.sample_rate = 2.048e6
         client.gain = 'auto'
 
-        print("Radar Online: Calibrating...")
+        print("Radar Online. Monitoring for binary shadows...")
         
-        # Capture initial samples to set the baseline
-        samples = client.read_samples(1024*256)
-        baseline_var = np.var(np.abs(samples)**2)
-        threshold = baseline_var * 2.2 # Sensitivity multiplier
-
         while True:
+            # Read raw samples from the TCP bridge
             samples = client.read_samples(1024*256)
-            current_var = np.var(np.abs(samples)**2)
+            # Calculate the variance (the jitter of the physical world)
+            instability = np.var(np.abs(samples)**2)
             
-            if current_var > threshold:
-                print(f"[!] Binary Trace Detected: {time.strftime('%H:%M:%S')}")
+            # If the instability spikes, someone is in the room
+            if instability > 1.5e-06: # Adjust this value based on your room's 'quiet' level
+                print(f"[!] Presence Detected at {time.strftime('%H:%M:%S')}")
             
             time.sleep(0.1)
 
     except Exception as e:
-        print(f"Connection Glitch: {e}")
-        print("Make sure the RTL-SDR Driver APK is 'Started' and showing 'Listening'.")
+        print(f"Logic Error: {e}")
     finally:
         try: client.close()
         except: pass
