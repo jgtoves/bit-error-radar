@@ -44,8 +44,8 @@ def run_raw_radar():
         s.close()
 
 if __name__ == "__main__":
-    run_raw_radar()                print(f"[!] Binary Shadow Detected: {time.strftime('%H:%M:%S')}")
-            
+    run_raw_radar()
+    
             time.sleep(0.05)
 
     except Exception as e:
