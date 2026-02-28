@@ -1,40 +1,50 @@
 import os
+import socket
 import numpy as np
 import time
 
-# Essential for Termux environment
-os.environ['RTLSDR_CLIENT_MODE'] = 'true'
-from rtlsdr import RtlSdrTcpClient
+# 1. Match the coordinates you found in the APK
+TCP_IP = '127.0.0.1' 
+TCP_PORT = 14423
+BUFFER_SIZE = 1024 * 256 # Capture large 'shadows'
 
-def run_radar():
+def run_raw_radar():
+    print(f"Connecting to Raw Trace at {TCP_IP}:{TCP_PORT}...")
+    
     try:
-        # Match this exactly to what your APK shows
-        # Use 127.0.0.1 if the APK is on the SAME phone
-        print("Connecting to RTL-SDR Driver on 127.0.0.1:14423...")
-        client = RtlSdrTcpClient(hostname='127.0.0.1', port=14423)
-        
-        # Give the connection a moment to stabilize
-        time.sleep(2)
+        # Create a raw socket to talk to the APK
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((TCP_IP, TCP_PORT))
+        print("Connected. Recording the instability of the room...")
 
-        # Tune to the 5G frequency 'trace'
-        client.center_freq = 710e6  
-        client.sample_rate = 2.048e6
-        client.gain = 'auto'
+        # Calibration
+        time.sleep(1)
+        data = s.recv(BUFFER_SIZE)
+        # Convert binary bytes into numbers (IQ samples)
+        samples = np.frombuffer(data, dtype=np.uint8).astype(np.float32) - 127.5
+        baseline = np.var(samples**2)
+        threshold = baseline * 2.5
+        print(f"Calibration Complete. Noise Floor: {baseline:.2e}")
 
-        print("Radar Online. Monitoring for binary shadows...")
-        
         while True:
-            # Read raw samples from the TCP bridge
-            samples = client.read_samples(1024*256)
-            # Calculate the variance (the jitter of the physical world)
-            instability = np.var(np.abs(samples)**2)
+            data = s.recv(BUFFER_SIZE)
+            if not data: break
             
-            # If the instability spikes, someone is in the room
-            if instability > 1.5e-06: # Adjust this value based on your room's 'quiet' level
-                print(f"[!] Presence Detected at {time.strftime('%H:%M:%S')}")
+            samples = np.frombuffer(data, dtype=np.uint8).astype(np.float32) - 127.5
+            current_var = np.var(samples**2)
             
-            time.sleep(0.1)
+            if current_var > threshold:
+                print(f"[!] Binary Shadow Detected: {time.strftime('%H:%M:%S')}")
+            
+            time.sleep(0.05)
 
+    except Exception as e:
+        print(f"Trace Interrupted: {e}")
+    finally:
+        s.close()
+
+if __name__ == "__main__":
+    run_raw_radar()
     except Exception as e:
         print(f"Logic Error: {e}")
     finally:
