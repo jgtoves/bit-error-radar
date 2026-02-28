@@ -10,7 +10,7 @@ def run_radar():
     try:
         # 1. Connect to the APK Driver
         print("Connecting to RTL-SDR Driver APK...")
-        client = RtlSdrTcpClient(hostname='127.0.0.1', port=1234)
+        client = RtlSdrTcpClient(hostname='0.0.0.0', port=14423)
         
         # Give the socket a second to breathe
         time.sleep(1)
